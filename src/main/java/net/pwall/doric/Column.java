@@ -58,6 +58,8 @@ public class Column {
     // That can be used to determine that the column has more than the maximum
 
     private StorageType storageType;
+    private StorageType dataOffsetStorageType;
+    private StorageType dataLengthStorageType;
     private String value;
     private int decimalShift;
 
@@ -80,6 +82,9 @@ public class Column {
         maxDecimals = 0;
         uniqueValues = new HashSet<>();
         storageType = StorageType.undetermined;
+        dataOffsetStorageType = StorageType.undetermined;
+        dataLengthStorageType = StorageType.undetermined;
+
         value = null;
         decimalShift = 0;
         filename = null;
@@ -173,7 +178,7 @@ public class Column {
         if (maxWidth == 0) {
             storageType = StorageType.none;
         }
-        if (getNumUniqueValues() == 1) {
+        else if (getNumUniqueValues() == 1) {
             storageType = StorageType.fixed;
             value = uniqueValues.iterator().next();
         }
@@ -192,14 +197,24 @@ public class Column {
         }
         else {
             storageType = StorageType.bytes;
+            int numOccurrences = uniqueValues == null ? table.getRowCount() :
+                    uniqueValues.size();
+            dataOffsetStorageType = getIntStorageType(0, numOccurrences * maxWidth);
+            dataLengthStorageType = getIntStorageType(0, maxWidth);
         }
     }
 
     private StorageType getIntStorageType(long min, long max) {
+        if (min >= 0 && max <= 0xFF)
+            return StorageType.uint8;
         if (min >= Byte.MIN_VALUE && max <= Byte.MAX_VALUE)
             return StorageType.int8;
+        if (min >= 0 && max <= 0xFFFF)
+            return StorageType.uint16;
         if (min >= Short.MIN_VALUE && max <= Short.MAX_VALUE)
             return StorageType.int16;
+        if (min >= 0 && max <= 0xFFFFFFFFL)
+            return  StorageType.uint32;
         if (min >= Integer.MIN_VALUE && max <= Integer.MAX_VALUE)
             return StorageType.int32;
         return StorageType.int64;
@@ -277,6 +292,14 @@ public class Column {
         return storageType;
     }
 
+    public StorageType getDataOffsetStorageType() {
+        return dataOffsetStorageType;
+    }
+
+    public StorageType getDataLengthStorageType() {
+        return dataLengthStorageType;
+    }
+
     public JSONObject toJSON() {
         JSONObject json = JSONObject.create().putValue("name", name);
         if (table.getRowCount() > 0) {
@@ -295,6 +318,10 @@ public class Column {
             if (numUnique > 0)
                 json.putValue("uniqueValues", numUnique);
             json.putValue("storageType", storageType.toString());
+            if (storageType == StorageType.bytes) {
+                json.putValue("offsetStorageType", dataOffsetStorageType.toString());
+                json.putValue("lengthStorageType", dataLengthStorageType.toString());
+            }
             if (storageType == StorageType.fixed)
                 json.putValue("value", value);
             if (decimalShift != 0)
@@ -307,6 +334,19 @@ public class Column {
         return json;
     }
 
-    public enum StorageType { undetermined, none, fixed, int8, int16, int32, int64, float64, bytes }
+    public enum StorageType {
+        undetermined,
+        none,
+        fixed,
+        int8,
+        int16,
+        int32,
+        int64,
+        uint8,
+        uint16,
+        uint32,
+        float64,
+        bytes
+    }
 
 }
