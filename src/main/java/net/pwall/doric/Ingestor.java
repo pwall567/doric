@@ -94,12 +94,17 @@ public class Ingestor {
                             record.getField(i), uniqueValueMaps[i]);
             }
             for (int i = 0; i < columnCount; i++) {
+                Column column = table.getColumn(i);
                 ColumnWriter writer = columnWriters[i];
-                if (writer != null)
+                if (writer != null) {
+                    column.setFileSize(writer.getOffset());
                     writer.close();
+                }
                 writer = columnDataWriters[i];
-                if (writer != null)
+                if (writer != null) {
+                    column.setDataFileSize(writer.getOffset());
                     writer.close();
+                }
             }
             JSONObject json = table.toJSON();
             FileWriter metadata = new FileWriter(new File(outFile, "metadata.json"));
@@ -155,6 +160,9 @@ public class Ingestor {
             else {
                 writer.writeInt64(Long.valueOf(str));
             }
+        }
+        else if (storageType == Column.StorageType.float64) {
+            writer.writeFloat64(Double.valueOf(str));
         }
         else if (storageType == Column.StorageType.bytes) {
             long start;

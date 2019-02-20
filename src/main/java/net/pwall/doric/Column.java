@@ -65,6 +65,8 @@ public class Column {
 
     private String filename;
     private String dataFilename;
+    private long fileSize;
+    private long dataFileSize;
 
     public Column(Table table, String name) {
         this.table = table;
@@ -89,6 +91,8 @@ public class Column {
         decimalShift = 0;
         filename = null;
         dataFilename = null;
+        fileSize = 0;
+        dataFileSize = 0;
     }
 
     /**
@@ -288,6 +292,22 @@ public class Column {
         this.dataFilename = dataFilename;
     }
 
+    public long getFileSize() {
+        return fileSize;
+    }
+
+    public void setFileSize(long fileSize) {
+        this.fileSize = fileSize;
+    }
+
+    public long getDataFileSize() {
+        return dataFileSize;
+    }
+
+    public void setDataFileSize(long dataFileSize) {
+        this.dataFileSize = dataFileSize;
+    }
+
     public StorageType getStorageType() {
         return storageType;
     }
@@ -326,10 +346,14 @@ public class Column {
                 json.putValue("value", value);
             if (decimalShift != 0)
                 json.putValue("decimalShift", decimalShift);
-            if (filename != null)
+            if (filename != null) {
                 json.putValue("filename", filename);
-            if (dataFilename != null)
+                json.putValue("fileSize", fileSize);
+            }
+            if (dataFilename != null) {
                 json.putValue("dataFilename", dataFilename);
+                json.putValue("dataFileSize", dataFileSize);
+            }
         }
         return json;
     }

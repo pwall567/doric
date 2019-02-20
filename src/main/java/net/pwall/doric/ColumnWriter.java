@@ -70,11 +70,20 @@ public class ColumnWriter {
     public void writeInt64(long i) throws IOException {
         writeInt32((int)(i >> 32));
         writeInt32((int)i);
-        offset += 8;
+    }
+
+    public void writeFloat64(double d) throws IOException {
+        writeInt64(Double.doubleToLongBits(d));
+    }
+
+    public void writeFloat32(float f) throws IOException {
+        writeInt32(Float.floatToIntBits(f));
     }
 
     public void writeBytes(String str) throws IOException {
-        out.write(Strings.toUTF8(str));
+        byte[] bytes = Strings.toUTF8(str);
+        out.write(bytes);
+        offset += bytes.length;
     }
 
     public void close() throws IOException {
