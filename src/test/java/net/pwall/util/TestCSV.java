@@ -68,4 +68,13 @@ public class TestCSV {
         }
     }
 
+    @Test
+    public void testByteSignExtension() {
+        assertEquals(-2, testByte()); // confirming that byte sign-extends to int
+    }
+
+    private int testByte() {
+        byte b = (byte)0xFE;
+        return b;
+    }
 }

@@ -25,11 +25,14 @@
 
 package net.pwall.doric;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+import net.pwall.json.JSON;
 import net.pwall.json.JSONArray;
 import net.pwall.json.JSONObject;
 import net.pwall.util.CSV;
@@ -50,6 +53,10 @@ public class Table {
     private int maxUniqueValues;
     private int rowCount;
 
+    private BufferPool bufferPool;
+    private ColumnReader[] columnReaders;
+    private ColumnReader[] columnDataReaders;
+
     /**
      * Construct a table.
      */
@@ -58,6 +65,59 @@ public class Table {
         maxUniqueValues = defaultMaxUniqueValues;
         columns = null;
         rowCount = 0;
+
+        bufferPool = null;
+        columnReaders = null;
+        columnDataReaders = null;
+    }
+
+    public void open(String filename) throws IOException {
+        open(new File(filename));
+    }
+
+    public void open(File file) throws IOException {
+        if (!(file.exists() && file.isDirectory()))
+            throw new IOException("Not found or not a directory: " + file);
+        try {
+            JSONObject json = JSON.parseObject(new File(file, "metadata.json"));
+            source = json.getString("source");
+            rowCount = json.getInt("rows");
+            JSONArray jsonColumns = json.getArray("columns");
+            int numColumns = jsonColumns.size();
+            columns = new ArrayList<>(numColumns);
+            bufferPool = new BufferPool(16, 8192); // TODO parameterise these values
+            columnReaders = new ColumnReader[numColumns];
+            columnDataReaders = new ColumnReader[numColumns];
+            for (int i = 0; i < numColumns; i++) {
+                JSONObject jsonColumn = jsonColumns.getObject(i);
+                String columnName = jsonColumn.getString("name");
+                Column column = Column.fromJSON(this, columnName, jsonColumn);
+                columns.add(column);
+                String filename = column.getFilename();
+                if (filename != null)
+                    columnReaders[i] = new ColumnReader(bufferPool, new File(file, filename),
+                            column.getFileSize());
+                filename = column.getDataFilename();
+                if (filename != null)
+                    columnDataReaders[i] = new ColumnReader(bufferPool, new File(file, filename),
+                            column.getDataFileSize());
+            }
+        }
+        catch (IOException ioe) {
+            throw ioe;
+        }
+        catch (Exception e) {
+            throw new IOException("Error reading metadata", e);
+        }
+    }
+
+    public void close() throws IOException {
+        for (int i = 0; i < columns.size(); i++) {
+            if (columnReaders[i] != null)
+                columnReaders[i].close();;
+            if (columnDataReaders[i] != null)
+                columnDataReaders[i].close();;
+        }
     }
 
     public String getSource() {

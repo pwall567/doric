@@ -342,7 +342,7 @@ public class Column {
                 json.putValue("offsetStorageType", dataOffsetStorageType.toString());
                 json.putValue("lengthStorageType", dataLengthStorageType.toString());
             }
-            if (storageType == StorageType.fixed)
+            else if (storageType == StorageType.fixed)
                 json.putValue("value", value);
             if (decimalShift != 0)
                 json.putValue("decimalShift", decimalShift);
@@ -356,6 +356,45 @@ public class Column {
             }
         }
         return json;
+    }
+
+    public static Column fromJSON(Table table, String name, JSONObject json) {
+        Column column = new Column(table, name);
+        if (table.getRowCount() > 0) {
+            column.minWidth = json.getInt("minWidth");
+            column.maxWidth = json.getInt("maxWidth");
+            String type = json.getString("type");
+            if (type.equals("integer")) {
+                column.integer = true;
+                column.minInt = json.getLong("minInt");
+                column.maxInt = json.getLong("maxInt");
+            }
+            else if (type.equals("float")) {
+                column.floating = true;
+                column.minFloat = json.getDouble("minFloat");
+                column.maxFloat = json.getDouble("maxFloat");
+                column.maxDecimals = json.getInt("maxDecimals");
+            }
+            // TODO - if "uniqueValues" is in JSON, how do we make use of it?
+            column.storageType = StorageType.valueOf(json.getString("storageType"));
+            if (column.storageType == StorageType.bytes) {
+                column.dataOffsetStorageType = StorageType.valueOf(json.getString("offsetStorageType"));
+                column.dataLengthStorageType = StorageType.valueOf(json.getString("lengthStorageType"));
+            }
+            else if (column.storageType == StorageType.fixed)
+                column.value = json.getString("value");
+            if (json.containsKey("decimalShift"))
+                column.decimalShift = json.getInt("decimalShift");
+            if (json.containsKey("filename")) {
+                column.filename = json.getString("filename");
+                column.fileSize = json.getLong("fileSize");
+            }
+            if (json.containsKey("dataFilename")) {
+                column.filename = json.getString("dataFilename");
+                column.fileSize = json.getLong("dataFileSize");
+            }
+        }
+        return column;
     }
 
     public enum StorageType {

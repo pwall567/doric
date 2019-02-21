@@ -25,29 +25,110 @@
 
 package net.pwall.doric;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
+import net.pwall.util.Strings;
+
 public class ColumnReader {
 
     private BufferPool bufferPool;
-    private RandomAccessFile file;
+    private RandomAccessFile raf;
     private long fileSize;
 
     public ColumnReader(BufferPool bufferPool, String filename, long fileSize) throws FileNotFoundException {
+        this(bufferPool, new File(filename), fileSize);
+    }
+
+    public ColumnReader(BufferPool bufferPool, File file, long fileSize) throws FileNotFoundException {
         this.bufferPool = bufferPool;
-        file = new RandomAccessFile(filename, "r");
+        raf = new RandomAccessFile(file, "r");
         this.fileSize = fileSize;
     }
 
     public int readInt8(long offset) throws IOException {
         int bufferSize = bufferPool.getBufferSize();
-        long bufferOffset = (offset % bufferSize) * bufferSize;
-        int readLength = (int)(fileSize < bufferOffset + bufferSize ? fileSize - bufferOffset : bufferSize);
-        byte[] buffer = bufferPool.findBuffer(file, bufferOffset, readLength);
-        byte b = buffer[(int)(offset - bufferOffset)];
-        return b; // check that this sign-extends b
+        long bufferOffset = roundDown(offset, bufferSize);
+        byte[] buffer = findBuffer(bufferOffset);
+        return buffer[(int)(offset - bufferOffset)]; // confirm that this sign-extends b
+    }
+
+    public int readInt16(long offset) throws IOException {
+        int bufferSize = bufferPool.getBufferSize();
+        long bufferOffset = roundDown(offset, bufferSize);
+        byte[] buffer = findBuffer(bufferOffset);
+        int internalOffset = (int)(offset - bufferOffset);
+        int result = buffer[internalOffset++];
+        if (internalOffset == bufferSize) {
+            buffer = findBuffer(offset + 1);
+            internalOffset = 0;
+        }
+        return result << 8 | (buffer[internalOffset] & 0xFF);
+    }
+
+    public int readInt32(long offset) throws IOException {
+        int bufferSize = bufferPool.getBufferSize();
+        long bufferOffset = roundDown(offset, bufferSize);
+        byte[] buffer = findBuffer(bufferOffset);
+        int internalOffset = (int)(offset - bufferOffset);
+        int result = buffer[internalOffset++];
+        if (internalOffset == bufferSize) {
+            buffer = findBuffer(offset + 1);
+            internalOffset = 0;
+        }
+        result = result << 8 | (buffer[internalOffset++] & 0xFF);
+        if (internalOffset == bufferSize) {
+            buffer = findBuffer(offset + 1);
+            internalOffset = 0;
+        }
+        result = result << 8 | (buffer[internalOffset++] & 0xFF);
+        if (internalOffset == bufferSize) {
+            buffer = findBuffer(offset + 1);
+            internalOffset = 0;
+        }
+        return result << 8 | (buffer[internalOffset] & 0xFF);
+    }
+
+    public long readInt64(long offset) throws IOException {
+        return (long)readInt32(offset) << 32 | ((long)readInt32(offset + 4) & 0xFFFFFFFFL);
+    }
+
+    public double readFloat32(long offset) throws IOException {
+        return Float.intBitsToFloat(readInt32(offset));
+    }
+
+    public double readFloat64(long offset) throws IOException {
+        return Double.longBitsToDouble(readInt64(offset));
+    }
+
+    public String readBytes(long offset, int len) throws IOException {
+        int bufferSize = bufferPool.getBufferSize();
+        byte[] array = new byte[len];
+        int arrayOffset = 0;
+        while (arrayOffset < len) {
+            long bufferOffset = roundDown(offset + arrayOffset, bufferSize);
+            byte[] buffer = findBuffer(bufferOffset);
+            int internalOffset = (int)(offset - bufferOffset);
+            while (internalOffset < bufferSize && arrayOffset < len)
+                array[arrayOffset++] = buffer[internalOffset++];
+        }
+        return Strings.fromUTF8(array);
+    }
+
+    private byte[] findBuffer(long offset) throws IOException {
+        long bytesLeft = fileSize - offset;
+        int readLength = (int)Math.min(bytesLeft, bufferPool.getBufferSize());
+        return bufferPool.findBuffer(raf, offset, readLength);
+    }
+
+    private long roundDown(long offset, int bufferSize) {
+        return (offset / bufferSize) * bufferSize;
+    }
+
+    public void close() throws IOException {
+        raf.close();
     }
 
 }
