@@ -44,7 +44,7 @@ import net.pwall.util.CSV;
  */
 public class Table {
 
-    public static final int defaultMaxUniqueValues = 20;
+    public static final int defaultMaxUniqueValues = 200;
     public static final int maxDecimalShift = 4;
     public static final int[] decimalShifts = { 1, 10, 100, 1000, 10000 };
 
@@ -91,7 +91,7 @@ public class Table {
             for (int i = 0; i < numColumns; i++) {
                 JSONObject jsonColumn = jsonColumns.getObject(i);
                 String columnName = jsonColumn.getString("name");
-                Column column = Column.fromJSON(this, columnName, jsonColumn);
+                Column column = Column.fromJSON(this, i, columnName, jsonColumn);
                 columns.add(column);
                 String filename = column.getFilename();
                 if (filename != null)
@@ -136,6 +136,14 @@ public class Table {
         this.maxUniqueValues = maxUniqueValues;
     }
 
+    public ColumnReader getColumnReader(int columnNumber) {
+        return columnReaders[columnNumber];
+    }
+
+    public ColumnReader getColumnDataReader(int columnNumber) {
+        return columnDataReaders[columnNumber];
+    }
+
     public void analyse(CSV csv, boolean readHeader) {
         columns = new ArrayList<>();
         if (readHeader) {
@@ -143,13 +151,13 @@ public class Table {
                 throw new IllegalArgumentException("CSV Header line missing");
             CSV.Record header = csv.next();
             for (int i = 0, n = header.getWidth(); i < n; i++)
-                columns.add(new Column(this, header.getField(i)));
+                columns.add(new Column(this, i, header.getField(i)));
         }
         while (csv.hasNext()) {
             CSV.Record record = csv.next();
             if (!readHeader && rowCount == 0) {
                 for (int i = 0, n = record.getWidth(); i < n; i++)
-                    columns.add(new Column(this, "col" + i));
+                    columns.add(new Column(this, i, "col" + i));
             }
 
             int width = record.getWidth();
@@ -172,12 +180,41 @@ public class Table {
         return rowCount;
     }
 
+    public Row getRow(int rowNumber) {
+        return new Row(this, rowNumber);
+    }
+
+    public Iterable<Row> getRows() {
+        return () -> new Iterator<Row>() {
+            private int index = 0;
+            @Override
+            public boolean hasNext() {
+                return index < rowCount;
+            }
+            @Override
+            public Row next() {
+                if (!hasNext())
+                    throw new NoSuchElementException();
+                return getRow(index++);
+            }
+        };
+    }
+
     public int getColumnCount() {
         return columns.size();
     }
 
-    public Column getColumn(int index) {
-        return columns.get(index);
+    public Column getColumn(int columnNumber) {
+        return columns.get(columnNumber);
+    }
+
+    public Column getColumn(String columnName) {
+        for (int i = 0, n = columns.size(); i < n; i++) {
+            Column column = columns.get(i);
+            if (column.getName().equals(columnName))
+                return column;
+        }
+        throw new IllegalArgumentException("Can't locate column: " + columnName);
     }
 
     public Iterable<Column> getColumns() {

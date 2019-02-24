@@ -52,7 +52,7 @@ public class ColumnReader {
         int bufferSize = bufferPool.getBufferSize();
         long bufferOffset = roundDown(offset, bufferSize);
         byte[] buffer = findBuffer(bufferOffset);
-        return buffer[(int)(offset - bufferOffset)]; // confirm that this sign-extends b
+        return buffer[(int)(offset - bufferOffset)];
     }
 
     public int readInt16(long offset) throws IOException {
@@ -110,7 +110,7 @@ public class ColumnReader {
         while (arrayOffset < len) {
             long bufferOffset = roundDown(offset + arrayOffset, bufferSize);
             byte[] buffer = findBuffer(bufferOffset);
-            int internalOffset = (int)(offset - bufferOffset);
+            int internalOffset = (int)(offset + arrayOffset - bufferOffset);
             while (internalOffset < bufferSize && arrayOffset < len)
                 array[arrayOffset++] = buffer[internalOffset++];
         }
@@ -123,8 +123,17 @@ public class ColumnReader {
         return bufferPool.findBuffer(raf, offset, readLength);
     }
 
-    private long roundDown(long offset, int bufferSize) {
-        return (offset / bufferSize) * bufferSize;
+    /**
+     * Round down the offset to a multiple of the buffer size.  This technique relies on the {@link BufferPool}
+     * restricting buffer sizes to powers of 2.
+     *
+     * @param   offset      the offset
+     * @param   bufferSize  the buffer size
+     * @return  the offset rounded down.
+     */
+    private static long roundDown(long offset, int bufferSize) {
+//        return (offset / bufferSize) * bufferSize;
+        return offset & -bufferSize;
     }
 
     public void close() throws IOException {

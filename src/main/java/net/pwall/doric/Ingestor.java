@@ -29,6 +29,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.HashMap;
 
 import net.pwall.json.JSONFormat;
@@ -37,8 +38,6 @@ import net.pwall.util.CSV;
 import net.pwall.util.Strings;
 
 public class Ingestor {
-
-    private static final double[] decimalShifts = { 1, 10, 100, 1000, 10000 };
 
     public static void ingest(File csvFile, boolean headers, File outFile, boolean showMetadata, Integer maxUnique)
             throws IOException {
@@ -64,7 +63,7 @@ public class Ingestor {
                 Column column = table.getColumn(i);
                 Column.StorageType storageType = column.getStorageType();
                 if (!(storageType == Column.StorageType.none ||
-                        storageType == Column.StorageType.fixed)) {
+                        storageType == Column.StorageType.constant)) {
                     StringBuilder sb = new StringBuilder();
                     Strings.append3Digits(sb, i);
                     sb.append(".out");
@@ -125,40 +124,38 @@ public class Ingestor {
         int decimalShift = column.getDecimalShift();
         if (storageType == Column.StorageType.int8 || storageType == Column.StorageType.uint8) {
             if (decimalShift > 0) {
-                double d = Double.valueOf(str) * decimalShifts[decimalShift];
-                writer.writeInt8((int)Math.round(d));
+                writer.writeInt8((int)applyDecimalShift(str, decimalShift));
             }
             else {
-                writer.writeInt8(Integer.valueOf(str));
+                int value = column.isDate() ? (int)LocalDate.parse(str).toEpochDay() : Integer.valueOf(str);
+                writer.writeInt8(value);
             }
         }
-        else if (storageType == Column.StorageType.int16 ||
-                storageType == Column.StorageType.uint16) {
+        else if (storageType == Column.StorageType.int16 || storageType == Column.StorageType.uint16) {
             if (decimalShift > 0) {
-                double d = Double.valueOf(str) * decimalShifts[decimalShift];
-                writer.writeInt16((int)Math.round(d));
+                writer.writeInt16((int)applyDecimalShift(str, decimalShift));
             }
             else {
-                writer.writeInt16(Integer.valueOf(str));
+                int value = column.isDate() ? (int)LocalDate.parse(str).toEpochDay() : Integer.valueOf(str);
+                writer.writeInt16(value);
             }
         }
-        else if (storageType == Column.StorageType.int32 ||
-                storageType == Column.StorageType.uint32) {
+        else if (storageType == Column.StorageType.int32 || storageType == Column.StorageType.uint32) {
             if (decimalShift > 0) {
-                double d = Double.valueOf(str) * decimalShifts[decimalShift];
-                writer.writeInt32((int)Math.round(d));
+                writer.writeInt32((int)applyDecimalShift(str, decimalShift));
             }
             else {
-                writer.writeInt32(Integer.valueOf(str));
+                long value = column.isDate() ? LocalDate.parse(str).toEpochDay() : Long.valueOf(str);
+                writer.writeInt32((int)value);
             }
         }
         else if (storageType == Column.StorageType.int64) {
             if (decimalShift > 0) {
-                double d = Double.valueOf(str) * decimalShifts[decimalShift];
-                writer.writeInt64(Math.round(d));
+                writer.writeInt64(applyDecimalShift(str, decimalShift));
             }
             else {
-                writer.writeInt64(Long.valueOf(str));
+                long value = column.isDate() ? LocalDate.parse(str).toEpochDay() : Long.valueOf(str);
+                writer.writeInt64(value);
             }
         }
         else if (storageType == Column.StorageType.float64) {
@@ -168,8 +165,8 @@ public class Ingestor {
             long start;
             long length;
             if (column.getNumUniqueValues() > 0) {
-                Long uniqueValueCached = uniqueValueMap.get(str);
-                if (uniqueValueCached != null) {
+                if (uniqueValueMap.containsKey(str)) {
+                    long uniqueValueCached = uniqueValueMap.get(str);
                     start = uniqueValueCached;
                     length = uniqueValueCached >> 32;
                 }
@@ -189,9 +186,29 @@ public class Ingestor {
             storeValueInt(writer, column.getDataLengthStorageType(), length);
         }
         else if (!(storageType == Column.StorageType.none ||
-                storageType == Column.StorageType.fixed)) {
+                storageType == Column.StorageType.constant)) {
             throw new RuntimeException("Unhandled data type");
         }
+    }
+
+    /**
+     * Convert input string to a decimal-shifted long without using a double as an intermediate (avoids potential
+     * rounding problems).
+     *
+     * @param   str             the input string
+     * @param   decimalShift    the number of decimal places to shift
+     * @return  a {@code long} representing the value decimal-shifted
+     */
+    private static long applyDecimalShift(String str, int decimalShift) {
+        StringBuilder sb = new StringBuilder(str);
+        int i = str.indexOf('.');
+        if (i >= 0) {
+            sb.deleteCharAt(i);
+            i = sb.length() - i - 1; // the number of decimals, minus 1
+        }
+        while (++i < decimalShift)
+            sb.append('0');
+        return Long.valueOf(sb.toString());
     }
 
     private static void storeValueInt(ColumnWriter writer, Column.StorageType storageType,

@@ -26,6 +26,8 @@
 package net.pwall.doric;
 
 
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -37,6 +39,7 @@ import net.pwall.json.JSONObject;
 public class Column {
 
     private Table table;
+    private int number;
     private String name;
 
     private int minWidth;
@@ -46,6 +49,8 @@ public class Column {
     private boolean intInit;
     private boolean floating;
     private boolean floatInit;
+    private boolean date;
+    private boolean dateInit;
 
     private long maxInt;
     private long minInt;
@@ -68,8 +73,9 @@ public class Column {
     private long fileSize;
     private long dataFileSize;
 
-    public Column(Table table, String name) {
+    public Column(Table table, int number, String name) {
         this.table = table;
+        this.number = number;
         this.name = name;
         minWidth = Integer.MAX_VALUE;
         maxWidth = 0;
@@ -77,6 +83,8 @@ public class Column {
         intInit = false;
         floating = true;
         floatInit = false;
+        date = true;
+        dateInit = false;
         maxInt = 0;
         minInt = 0;
         maxFloat = 0.0;
@@ -164,6 +172,28 @@ public class Column {
             }
         }
 
+        if (date) {
+            try {
+                LocalDate localDate = LocalDate.parse(str);
+                long epochDay = localDate.toEpochDay();
+                if (dateInit) {
+                    if (epochDay < minInt)
+                        minInt = epochDay;
+                    if (epochDay > maxInt)
+                        maxInt = epochDay;
+                }
+                else {
+                    minInt = epochDay;
+                    maxInt = epochDay;
+                    dateInit = true;
+                    integer = false; // should be anyway, but just in case
+                }
+            }
+            catch (DateTimeParseException e) {
+                date = false;
+            }
+        }
+
         if (uniqueValues != null) {
             if (uniqueValues.size() <= table.getMaxUniqueValues())
                 uniqueValues.add(str);
@@ -171,8 +201,8 @@ public class Column {
                 uniqueValues = null;
         }
 
-        // At this point, we can check for other data types, like dates, times, currency
-        // codes, IATA city codes, ...
+        // At this point, we can check for other data types, like times, currency codes,
+        // IATA city codes, ...
     }
 
     /**
@@ -183,10 +213,10 @@ public class Column {
             storageType = StorageType.none;
         }
         else if (getNumUniqueValues() == 1) {
-            storageType = StorageType.fixed;
+            storageType = StorageType.constant;
             value = uniqueValues.iterator().next();
         }
-        else if (integer) {
+        else if (integer || date) {
             storageType = getIntStorageType(minInt, maxInt);
         }
         else if (floating) {
@@ -208,7 +238,7 @@ public class Column {
         }
     }
 
-    private StorageType getIntStorageType(long min, long max) {
+    private static StorageType getIntStorageType(long min, long max) {
         if (min >= 0 && max <= 0xFF)
             return StorageType.uint8;
         if (min >= Byte.MIN_VALUE && max <= Byte.MAX_VALUE)
@@ -222,6 +252,10 @@ public class Column {
         if (min >= Integer.MIN_VALUE && max <= Integer.MAX_VALUE)
             return StorageType.int32;
         return StorageType.int64;
+    }
+
+    public int getNumber() {
+        return number;
     }
 
     public String getName() {
@@ -238,6 +272,10 @@ public class Column {
 
     public int getMaxWidth() {
         return maxWidth;
+    }
+
+    public boolean isDate() {
+        return date;
     }
 
     public boolean isInteger() {
@@ -274,6 +312,10 @@ public class Column {
 
     public int getNumUniqueValues() {
         return uniqueValues == null ? 0 : uniqueValues.size();
+    }
+
+    public String getConstantValue() {
+        return value;
     }
 
     public String getFilename() {
@@ -332,6 +374,10 @@ public class Column {
                 json.putValue("type", "float").putValue("minFloat", minFloat).
                         putValue("maxFloat", maxFloat).putValue("maxDecimals", maxDecimals);
             }
+            else if (isDate()) {
+                json.putValue("type", "date").putValue("minInt", minInt).
+                        putValue("maxInt", maxInt);
+            }
             else
                 json.putValue("type", "undetermined");
             int numUnique = getNumUniqueValues();
@@ -342,7 +388,7 @@ public class Column {
                 json.putValue("offsetStorageType", dataOffsetStorageType.toString());
                 json.putValue("lengthStorageType", dataLengthStorageType.toString());
             }
-            else if (storageType == StorageType.fixed)
+            else if (storageType == StorageType.constant)
                 json.putValue("value", value);
             if (decimalShift != 0)
                 json.putValue("decimalShift", decimalShift);
@@ -358,8 +404,11 @@ public class Column {
         return json;
     }
 
-    public static Column fromJSON(Table table, String name, JSONObject json) {
-        Column column = new Column(table, name);
+    public static Column fromJSON(Table table, int number, String name, JSONObject json) {
+        Column column = new Column(table, number, name);
+        column.integer = false;
+        column.floating = false;
+        column.date = false;
         if (table.getRowCount() > 0) {
             column.minWidth = json.getInt("minWidth");
             column.maxWidth = json.getInt("maxWidth");
@@ -375,13 +424,20 @@ public class Column {
                 column.maxFloat = json.getDouble("maxFloat");
                 column.maxDecimals = json.getInt("maxDecimals");
             }
+            else if (type.equals("date")) {
+                column.date = true;
+                column.minInt = json.getLong("minInt");
+                column.maxInt = json.getLong("maxInt");
+            }
             // TODO - if "uniqueValues" is in JSON, how do we make use of it?
             column.storageType = StorageType.valueOf(json.getString("storageType"));
             if (column.storageType == StorageType.bytes) {
-                column.dataOffsetStorageType = StorageType.valueOf(json.getString("offsetStorageType"));
-                column.dataLengthStorageType = StorageType.valueOf(json.getString("lengthStorageType"));
+                column.dataOffsetStorageType =
+                        StorageType.valueOf(json.getString("offsetStorageType"));
+                column.dataLengthStorageType =
+                        StorageType.valueOf(json.getString("lengthStorageType"));
             }
-            else if (column.storageType == StorageType.fixed)
+            else if (column.storageType == StorageType.constant)
                 column.value = json.getString("value");
             if (json.containsKey("decimalShift"))
                 column.decimalShift = json.getInt("decimalShift");
@@ -390,8 +446,8 @@ public class Column {
                 column.fileSize = json.getLong("fileSize");
             }
             if (json.containsKey("dataFilename")) {
-                column.filename = json.getString("dataFilename");
-                column.fileSize = json.getLong("dataFileSize");
+                column.dataFilename = json.getString("dataFilename");
+                column.dataFileSize = json.getLong("dataFileSize");
             }
         }
         return column;
@@ -400,7 +456,7 @@ public class Column {
     public enum StorageType {
         undetermined,
         none,
-        fixed,
+        constant,
         int8,
         int16,
         int32,

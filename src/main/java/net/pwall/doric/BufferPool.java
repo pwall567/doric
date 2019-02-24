@@ -37,6 +37,8 @@ public class BufferPool {
     private List<Entry> pool;
 
     public BufferPool(int maxEntries, int bufferSize) {
+        if (((bufferSize - 1) & bufferSize) != 0)
+            throw new IllegalArgumentException("Buffer size must be power of 2");
         this.maxEntries = maxEntries;
         this.bufferSize = bufferSize;
         pool = new ArrayList<>(maxEntries);
@@ -46,8 +48,9 @@ public class BufferPool {
         return bufferSize;
     }
 
-    public byte[] findBuffer(RandomAccessFile file, long offset, int length) throws IOException {
-        for (int i = 0; i < maxEntries; i++) {
+    public byte[] findBuffer(RandomAccessFile file, long offset, int length)
+            throws IOException {
+        for (int i = 0, n = pool.size(); i < n; i++) {
             Entry entry = pool.get(i);
             if (entry.getFile() == file && entry.getOffset() == offset) {
                 if (pool.size() > 1) {
@@ -57,7 +60,8 @@ public class BufferPool {
                 return entry.getBuffer();
             }
         }
-        Entry entry = pool.size() == maxEntries ? pool.remove(maxEntries - 1) : new Entry(bufferSize);
+        Entry entry = pool.size() == maxEntries ? pool.remove(maxEntries - 1) :
+                new Entry(bufferSize);
         entry.setFile(file);
         entry.setOffset(offset);
         file.seek(offset);
