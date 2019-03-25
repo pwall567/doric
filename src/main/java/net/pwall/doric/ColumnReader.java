@@ -137,6 +137,7 @@ public class ColumnReader {
     }
 
     public void close() throws IOException {
+        bufferPool.purge(raf);
         raf.close();
     }
 

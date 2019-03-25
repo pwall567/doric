@@ -1,5 +1,5 @@
 /*
- * @(#) Row.java
+ * @(#) ColumnOutputBytes8L8.java
  *
  * doric Column-oriented database system
  * Copyright (c) 2019 Peter Wall
@@ -23,42 +23,26 @@
  * SOFTWARE.
  */
 
-package net.pwall.doric;
+package net.pwall.doric.columnoutput;
 
+import java.io.File;
 import java.io.IOException;
+import java.util.Map;
 
-public class Row {
+public class ColumnOutputBytes8L8 extends ColumnOutputBytes {
 
-    private Table table;
-    private int rowNumber;
-
-    public Row(Table table, int rowNumber) {
-        this.table = table;
-        this.rowNumber = rowNumber;
+    public ColumnOutputBytes8L8(File file, int columnNumber, Map<String, Long> uniqueValues) throws IOException {
+        super(file, columnNumber, uniqueValues);
     }
 
-    public long getLong(String columnName) throws IOException {
-        return getLong(table.getColumn(columnName));
+    @Override
+    public void putOffset(long offset) throws IOException {
+        getColumnWriter().writeInt8((int)offset);
     }
 
-    public long getLong(int columnNumber) throws IOException {
-        return getLong(table.getColumn(columnNumber));
-    }
-
-    public long getLong(Column column) throws IOException {
-        return column.getColumnInput().getLong(rowNumber);
-    }
-
-    public String getString(String columnName) throws IOException {
-        return getString(table.getColumn(columnName));
-    }
-
-    public String getString(int columnNumber) throws IOException {
-        return getString(table.getColumn(columnNumber));
-    }
-
-    public String getString(Column column) throws IOException {
-        return column.getColumnInput().getString(rowNumber);
+    @Override
+    public void putLength(int length) throws IOException {
+        getColumnWriter().writeInt8(length);
     }
 
 }

@@ -26,11 +26,9 @@
 package net.pwall.doric;
 
 
-import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.Map;
 
+import net.pwall.doric.columninput.ColumnInput;
 import net.pwall.json.JSONObject;
 
 /**
@@ -38,19 +36,12 @@ import net.pwall.json.JSONObject;
  */
 public class Column {
 
-    private Table table;
-    private int number;
     private String name;
 
     private int minWidth;
     private int maxWidth;
 
-    private boolean integer;
-    private boolean intInit;
-    private boolean floating;
-    private boolean floatInit;
-    private boolean date;
-    private boolean dateInit;
+    private boolean nullable;
 
     private long maxInt;
     private long minInt;
@@ -58,328 +49,261 @@ public class Column {
     private double minFloat;
     private int maxDecimals;
 
-    private Set<String> uniqueValues;
-    // Implementation note - once the maximum is reached, this variable is set to null.
-    // That can be used to determine that the column has more than the maximum
+    private Map<String, Long> uniqueValues;
+    private Map<Long, Long> integerUniqueValues;
+    private Map<Double, Long> floatUniqueValues;
 
+    private Type type;
     private StorageType storageType;
     private StorageType dataOffsetStorageType;
     private StorageType dataLengthStorageType;
     private String value;
+    private Long valueInt;
+    private Double valueFloat;
     private int decimalShift;
 
-    private String filename;
-    private String dataFilename;
-    private long fileSize;
-    private long dataFileSize;
+    private FileData fileData;
 
-    public Column(Table table, int number, String name) {
-        this.table = table;
-        this.number = number;
+    private ColumnInput columnInput;
+
+    public Column(String name) {
         this.name = name;
         minWidth = Integer.MAX_VALUE;
         maxWidth = 0;
-        integer = true;
-        intInit = false;
-        floating = true;
-        floatInit = false;
-        date = true;
-        dateInit = false;
+        nullable = false;
         maxInt = 0;
         minInt = 0;
         maxFloat = 0.0;
         minFloat = 0.0;
         maxDecimals = 0;
-        uniqueValues = new HashSet<>();
+
+        uniqueValues = null;
+        integerUniqueValues = null;
+        floatUniqueValues = null;
+
+        type = Type.undetermined;
         storageType = StorageType.undetermined;
         dataOffsetStorageType = StorageType.undetermined;
         dataLengthStorageType = StorageType.undetermined;
 
         value = null;
+        valueInt = 0L;
+        valueFloat = 0.0;
         decimalShift = 0;
-        filename = null;
-        dataFilename = null;
-        fileSize = 0;
-        dataFileSize = 0;
+        fileData = null;
+
+        columnInput = null;
     }
 
-    /**
-     * Analyse the contents of the string and make appropriate changes to the metadata for
-     * the column.
-     *
-     * @param   str     the contents of one row for this column
-     */
-    public void analyse(String str) {
-
-        int strWidth = str.length();
-        if (strWidth < minWidth)
-            minWidth = strWidth;
-        if (strWidth > maxWidth)
-            maxWidth = strWidth;
-
-        if (strWidth == 0)
-            return; // empty column doesn't affect following analysis
-
-        if (floating) {
-            try {
-                double d = Double.valueOf(str);
-                if (floatInit) {
-                    if (d < minFloat)
-                        minFloat = d;
-                    if (d > maxFloat)
-                        maxFloat = d;
-                }
-                else {
-                    minFloat = d;
-                    maxFloat = d;
-                    floatInit = true;
-                }
-                int i = str.indexOf('.');
-                if (i >= 0) {
-                    int decimals = 0;
-                    while (++i < str.length()) {
-                        char ch = str.charAt(i);
-                        if (ch < '0' || ch > '9')
-                            break;
-                        decimals++;
-                    }
-                    if (decimals > maxDecimals)
-                        maxDecimals = decimals;
-                }
-            }
-            catch (NumberFormatException nfe) {
-                floating = false;
-            }
-        }
-
-        if (integer) {
-            try {
-                long i = Long.valueOf(str);
-                if (intInit) {
-                    if (i < minInt)
-                        minInt = i;
-                    if (i > maxInt)
-                        maxInt = i;
-                }
-                else {
-                    minInt = i;
-                    maxInt = i;
-                    intInit = true;
-                }
-            }
-            catch (NumberFormatException nfe) {
-                integer = false;
-            }
-        }
-
-        if (date) {
-            try {
-                LocalDate localDate = LocalDate.parse(str);
-                long epochDay = localDate.toEpochDay();
-                if (dateInit) {
-                    if (epochDay < minInt)
-                        minInt = epochDay;
-                    if (epochDay > maxInt)
-                        maxInt = epochDay;
-                }
-                else {
-                    minInt = epochDay;
-                    maxInt = epochDay;
-                    dateInit = true;
-                    integer = false; // should be anyway, but just in case
-                }
-            }
-            catch (DateTimeParseException e) {
-                date = false;
-            }
-        }
-
-        if (uniqueValues != null) {
-            if (uniqueValues.size() <= table.getMaxUniqueValues())
-                uniqueValues.add(str);
-            if (uniqueValues.size() > table.getMaxUniqueValues())
-                uniqueValues = null;
-        }
-
-        // At this point, we can check for other data types, like times, currency codes,
-        // IATA city codes, ...
+    public Type getType() {
+        return type;
     }
 
-    /**
-     * Work out the storage requirements for the column.
-     */
-    public void resolve() {
-        if (maxWidth == 0) {
-            storageType = StorageType.none;
-        }
-        else if (getNumUniqueValues() == 1) {
-            storageType = StorageType.constant;
-            value = uniqueValues.iterator().next();
-        }
-        else if (integer || date) {
-            storageType = getIntStorageType(minInt, maxInt);
-        }
-        else if (floating) {
-            if (maxDecimals <= Table.maxDecimalShift) {
-                long minShifted = Math.round(minFloat * Table.decimalShifts[maxDecimals]);
-                long maxShifted = Math.round(maxFloat * Table.decimalShifts[maxDecimals]);
-                storageType = getIntStorageType(minShifted, maxShifted);
-                decimalShift = maxDecimals;
-            }
-            else
-                storageType = StorageType.float64;
-        }
-        else {
-            storageType = StorageType.bytes;
-            int numOccurrences = uniqueValues == null ? table.getRowCount() :
-                    uniqueValues.size();
-            dataOffsetStorageType = getIntStorageType(0, numOccurrences * maxWidth);
-            dataLengthStorageType = getIntStorageType(0, maxWidth);
-        }
+    void setType(Type type) {
+        this.type = type;
     }
 
-    private static StorageType getIntStorageType(long min, long max) {
-        if (min >= 0 && max <= 0xFF)
-            return StorageType.uint8;
-        if (min >= Byte.MIN_VALUE && max <= Byte.MAX_VALUE)
-            return StorageType.int8;
-        if (min >= 0 && max <= 0xFFFF)
-            return StorageType.uint16;
-        if (min >= Short.MIN_VALUE && max <= Short.MAX_VALUE)
-            return StorageType.int16;
-        if (min >= 0 && max <= 0xFFFFFFFFL)
-            return  StorageType.uint32;
-        if (min >= Integer.MIN_VALUE && max <= Integer.MAX_VALUE)
-            return StorageType.int32;
-        return StorageType.int64;
+    public ColumnInput getColumnInput() {
+        return columnInput;
     }
 
-    public int getNumber() {
-        return number;
+    public void setColumnInput(ColumnInput columnInput) {
+        this.columnInput = columnInput;
     }
 
     public String getName() {
         return name;
     }
 
+    void setName(String name) {
+        this.name = name;
+    }
+
+    public boolean isNullable() {
+        return nullable;
+    }
+
+    void setNullable(boolean nullable) {
+        this.nullable = nullable;
+    }
+
     public int getMinWidth() {
         return minWidth;
     }
 
-    public void setName(String name) {
-        this.name = name;
+    void setMinWidth(int minWidth) {
+        this.minWidth = minWidth;
     }
 
     public int getMaxWidth() {
         return maxWidth;
     }
 
-    public boolean isDate() {
-        return date;
-    }
-
-    public boolean isInteger() {
-        return integer;
+    void setMaxWidth(int maxWidth) {
+        this.maxWidth = maxWidth;
     }
 
     public long getMinInt() {
         return minInt;
     }
 
+    void setMinInt(long minInt) {
+        this.minInt = minInt;
+    }
+
     public long getMaxInt() {
         return maxInt;
     }
 
-    public boolean isFloating() {
-        return floating;
+    void setMaxInt(long maxInt) {
+        this.maxInt = maxInt;
     }
 
     public double getMinFloat() {
         return minFloat;
     }
 
+    void setMinFloat(double minFloat) {
+        this.minFloat = minFloat;
+    }
+
     public double getMaxFloat() {
         return maxFloat;
+    }
+
+    void setMaxFloat(double maxFloat) {
+        this.maxFloat = maxFloat;
     }
 
     public int getMaxDecimals() {
         return maxDecimals;
     }
 
+    void setMaxDecimals(int maxDecimals) {
+        this.maxDecimals = maxDecimals;
+    }
+
     public int getDecimalShift() {
         return decimalShift;
     }
 
+    void setDecimalShift(int decimalShift) {
+        this.decimalShift = decimalShift;
+    }
+
     public int getNumUniqueValues() {
-        return uniqueValues == null ? 0 : uniqueValues.size();
+        if (uniqueValues != null)
+            return uniqueValues.size();
+        if (integerUniqueValues != null)
+            return integerUniqueValues.size();
+        if (floatUniqueValues != null)
+            return floatUniqueValues.size();
+        return 0;
+    }
+
+    public Map<String, Long> getUniqueValues() {
+        return uniqueValues;
+    }
+
+    void setUniqueValues(Map<String, Long> uniqueValues) {
+        this.uniqueValues = uniqueValues;
+    }
+
+    public Map<Long, Long> getIntegerUniqueValues() {
+        return integerUniqueValues;
+    }
+
+    void setIntegerUniqueValues(Map<Long, Long> integerUniqueValues) {
+        this.integerUniqueValues = integerUniqueValues;
+    }
+
+    public Map<Double, Long> getFloatUniqueValues() {
+        return floatUniqueValues;
+    }
+
+    void setFloatUniqueValues(Map<Double, Long> floatUniqueValues) {
+        this.floatUniqueValues = floatUniqueValues;
     }
 
     public String getConstantValue() {
         return value;
     }
 
-    public String getFilename() {
-        return filename;
+    void setConstantValue(String value) {
+        this.value = value;
     }
 
-    public void setFilename(String filename) {
-        this.filename = filename;
+    public Long getConstantValueInt() {
+        return valueInt;
     }
 
-    public String getDataFilename() {
-        return dataFilename;
+    void setConstantValueInt(Long valueInt) {
+        this.valueInt = valueInt;
     }
 
-    public void setDataFilename(String dataFilename) {
-        this.dataFilename = dataFilename;
+    public Double getConstantValueFloat() {
+        return valueFloat;
     }
 
-    public long getFileSize() {
-        return fileSize;
-    }
-
-    public void setFileSize(long fileSize) {
-        this.fileSize = fileSize;
-    }
-
-    public long getDataFileSize() {
-        return dataFileSize;
-    }
-
-    public void setDataFileSize(long dataFileSize) {
-        this.dataFileSize = dataFileSize;
+    void setConstantValueFloat(Double valueFloat) {
+        this.valueFloat = valueFloat;
     }
 
     public StorageType getStorageType() {
         return storageType;
     }
 
+    void setStorageType(StorageType storageType) {
+        this.storageType = storageType;
+    }
+
     public StorageType getDataOffsetStorageType() {
         return dataOffsetStorageType;
+    }
+
+    void setDataOffsetStorageType(StorageType dataOffsetStorageType) {
+        this.dataOffsetStorageType = dataOffsetStorageType;
     }
 
     public StorageType getDataLengthStorageType() {
         return dataLengthStorageType;
     }
 
+    void setDataLengthStorageType(StorageType dataLengthStorageType) {
+        this.dataLengthStorageType = dataLengthStorageType;
+    }
+
+    public FileData getFileData() {
+        return fileData;
+    }
+
+    public void setFileData(FileData fileData) {
+        this.fileData = fileData;
+    }
+
     public JSONObject toJSON() {
         JSONObject json = JSONObject.create().putValue("name", name);
-        if (table.getRowCount() > 0) {
+        if (maxWidth == 0) {
+            json.putValue("type", "null");
+        }
+        else {
             json.putValue("minWidth", minWidth).putValue("maxWidth", maxWidth);
-            if (isInteger()) {
+            if (type == Type.integer) {
                 json.putValue("type", "integer").putValue("minInt", minInt).
                         putValue("maxInt", maxInt);
             }
-            else if (isFloating()) {
-                json.putValue("type", "float").putValue("minFloat", minFloat).
+            else if (type == Type.floating) {
+                json.putValue("type", "floating").putValue("minFloat", minFloat).
                         putValue("maxFloat", maxFloat).putValue("maxDecimals", maxDecimals);
             }
-            else if (isDate()) {
+            else if (type == Type.date) {
                 json.putValue("type", "date").putValue("minInt", minInt).
                         putValue("maxInt", maxInt);
             }
             else
                 json.putValue("type", "undetermined");
+            if (nullable)
+                json.putValue("nullable", true);
             int numUnique = getNumUniqueValues();
             if (numUnique > 0)
                 json.putValue("uniqueValues", numUnique);
@@ -388,47 +312,57 @@ public class Column {
                 json.putValue("offsetStorageType", dataOffsetStorageType.toString());
                 json.putValue("lengthStorageType", dataLengthStorageType.toString());
             }
-            else if (storageType == StorageType.constant)
-                json.putValue("value", value);
+            else if (storageType == StorageType.constant) {
+                if (type == Type.integer)
+                    json.putValue("integerValue", valueInt);
+                else if (type == Type.floating)
+                    json.putValue("floatValue", valueFloat);
+                else
+                    json.putValue("value", value);
+            }
             if (decimalShift != 0)
                 json.putValue("decimalShift", decimalShift);
-            if (filename != null) {
-                json.putValue("filename", filename);
-                json.putValue("fileSize", fileSize);
-            }
-            if (dataFilename != null) {
-                json.putValue("dataFilename", dataFilename);
-                json.putValue("dataFileSize", dataFileSize);
+            if (fileData != null) {
+                JSONObject fileDataObject = fileData.toJSON();
+                if (fileDataObject != null)
+                    json.put("files", fileDataObject);
             }
         }
         return json;
     }
 
-    public static Column fromJSON(Table table, int number, String name, JSONObject json) {
-        Column column = new Column(table, number, name);
-        column.integer = false;
-        column.floating = false;
-        column.date = false;
-        if (table.getRowCount() > 0) {
+    public static Column fromJSON(JSONObject json) {
+        String name = json.getString("name");
+        Column column = new Column(name);
+        String type = json.getString("type");
+        if (type.equals("null")) {
+            column.minWidth = 0;
+            column.maxWidth = 0;
+            column.nullable = true;
+            column.type = Type.undetermined;
+            column.storageType = StorageType.none;
+        }
+        else {
             column.minWidth = json.getInt("minWidth");
             column.maxWidth = json.getInt("maxWidth");
-            String type = json.getString("type");
             if (type.equals("integer")) {
-                column.integer = true;
+                column.type = Type.integer;
                 column.minInt = json.getLong("minInt");
                 column.maxInt = json.getLong("maxInt");
             }
-            else if (type.equals("float")) {
-                column.floating = true;
+            else if (type.equals("floating")) {
+                column.type = Type.floating;
                 column.minFloat = json.getDouble("minFloat");
                 column.maxFloat = json.getDouble("maxFloat");
                 column.maxDecimals = json.getInt("maxDecimals");
             }
             else if (type.equals("date")) {
-                column.date = true;
+                column.type = Type.date;
                 column.minInt = json.getLong("minInt");
                 column.maxInt = json.getLong("maxInt");
             }
+            if (json.containsKey("nullable"))
+                column.nullable = json.getBoolean("nullable");
             // TODO - if "uniqueValues" is in JSON, how do we make use of it?
             column.storageType = StorageType.valueOf(json.getString("storageType"));
             if (column.storageType == StorageType.bytes) {
@@ -437,20 +371,96 @@ public class Column {
                 column.dataLengthStorageType =
                         StorageType.valueOf(json.getString("lengthStorageType"));
             }
-            else if (column.storageType == StorageType.constant)
-                column.value = json.getString("value");
+            else if (column.storageType == StorageType.constant) {
+                if (column.type == Type.integer)
+                    column.valueInt = json.getLong("integerValue");
+                else if (column.type == Type.floating)
+                    column.valueFloat = json.getDouble("floatValue");
+                else
+                    column.value = json.getString("value");
+            }
             if (json.containsKey("decimalShift"))
                 column.decimalShift = json.getInt("decimalShift");
-            if (json.containsKey("filename")) {
-                column.filename = json.getString("filename");
-                column.fileSize = json.getLong("fileSize");
-            }
-            if (json.containsKey("dataFilename")) {
-                column.dataFilename = json.getString("dataFilename");
-                column.dataFileSize = json.getLong("dataFileSize");
-            }
+            if (json.containsKey("files"))
+                column.fileData = FileData.fromJSON(json.getObject("files"));
         }
         return column;
+    }
+
+    public static class FileData {
+
+        private FileDetails rowData;
+        private FileDetails bytesData;
+
+        public FileDetails getRowData() {
+            return rowData;
+        }
+
+        public void setRowData(FileDetails rowData) {
+            this.rowData = rowData;
+        }
+
+        public FileDetails getBytesData() {
+            return bytesData;
+        }
+
+        public void setBytesData(FileDetails bytesData) {
+            this.bytesData = bytesData;
+        }
+
+        public JSONObject toJSON() {
+            JSONObject result = new JSONObject();
+            if (rowData != null)
+                result.put("main", rowData.toJSON());
+            if (bytesData != null)
+                result.put("data", bytesData.toJSON());
+            return result.size() == 0 ? null : result;
+        }
+
+        public static FileData fromJSON(JSONObject json) {
+            FileData result = new FileData();
+            if (json.containsKey("main"))
+                result.setRowData(FileDetails.fromJSON(json.getObject("main")));
+            if (json.containsKey("data"))
+                result.setBytesData(FileDetails.fromJSON(json.getObject("data")));
+            return result.getRowData() == null && result.getBytesData() == null ? null : result;
+        }
+
+    }
+
+    public static class FileDetails {
+
+        private String name;
+        private long size;
+
+        public FileDetails(String name, long size) {
+            this.name = name;
+            this.size = size;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public long getSize() {
+            return size;
+        }
+
+        public JSONObject toJSON() {
+            return JSONObject.create().putValue("name", name).putValue("size", size);
+        }
+
+        public static FileDetails fromJSON(JSONObject json) {
+            return new FileDetails(json.getString("name"), json.getLong("size"));
+        }
+
+    }
+
+    public enum Type {
+        integer,
+        floating,
+        date,
+        undetermined
     }
 
     public enum StorageType {

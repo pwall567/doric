@@ -1,5 +1,5 @@
 /*
- * @(#) Row.java
+ * @(#) ColumnOutputNone.java
  *
  * doric Column-oriented database system
  * Copyright (c) 2019 Peter Wall
@@ -23,42 +23,16 @@
  * SOFTWARE.
  */
 
-package net.pwall.doric;
+package net.pwall.doric.columnoutput;
 
-import java.io.IOException;
+public class ColumnOutputNone implements ColumnOutput {
 
-public class Row {
-
-    private Table table;
-    private int rowNumber;
-
-    public Row(Table table, int rowNumber) {
-        this.table = table;
-        this.rowNumber = rowNumber;
+    @Override
+    public void putNull() {
     }
 
-    public long getLong(String columnName) throws IOException {
-        return getLong(table.getColumn(columnName));
-    }
-
-    public long getLong(int columnNumber) throws IOException {
-        return getLong(table.getColumn(columnNumber));
-    }
-
-    public long getLong(Column column) throws IOException {
-        return column.getColumnInput().getLong(rowNumber);
-    }
-
-    public String getString(String columnName) throws IOException {
-        return getString(table.getColumn(columnName));
-    }
-
-    public String getString(int columnNumber) throws IOException {
-        return getString(table.getColumn(columnNumber));
-    }
-
-    public String getString(Column column) throws IOException {
-        return column.getColumnInput().getString(rowNumber);
+    @Override
+    public void putString(String value) {
     }
 
 }

@@ -1,5 +1,5 @@
 /*
- * @(#) Row.java
+ * @(#) ColumnOutputDate.java
  *
  * doric Column-oriented database system
  * Copyright (c) 2019 Peter Wall
@@ -23,42 +23,44 @@
  * SOFTWARE.
  */
 
-package net.pwall.doric;
+package net.pwall.doric.columnoutput;
 
 import java.io.IOException;
+import java.time.LocalDate;
 
-public class Row {
+import net.pwall.doric.Column;
 
-    private Table table;
-    private int rowNumber;
+public class ColumnOutputDate implements ColumnOutput {
 
-    public Row(Table table, int rowNumber) {
-        this.table = table;
-        this.rowNumber = rowNumber;
+    private ColumnOutput intColumnOutput;
+
+    public ColumnOutputDate(ColumnOutput intColumnOutput) {
+        this.intColumnOutput = intColumnOutput;
     }
 
-    public long getLong(String columnName) throws IOException {
-        return getLong(table.getColumn(columnName));
+    @Override
+    public void putNull() throws IOException {
+        intColumnOutput.putNull();
     }
 
-    public long getLong(int columnNumber) throws IOException {
-        return getLong(table.getColumn(columnNumber));
+    @Override
+    public void putLong(long value) throws IOException {
+        intColumnOutput.putLong(value);
     }
 
-    public long getLong(Column column) throws IOException {
-        return column.getColumnInput().getLong(rowNumber);
+    @Override
+    public void putNumber(Number value) throws IOException {
+        intColumnOutput.putLong(value.longValue());
     }
 
-    public String getString(String columnName) throws IOException {
-        return getString(table.getColumn(columnName));
+    @Override
+    public void putString(String value) throws IOException {
+        intColumnOutput.putLong(LocalDate.parse(value).toEpochDay());
     }
 
-    public String getString(int columnNumber) throws IOException {
-        return getString(table.getColumn(columnNumber));
-    }
-
-    public String getString(Column column) throws IOException {
-        return column.getColumnInput().getString(rowNumber);
+    @Override
+    public Column.FileData summariseAndClose() throws IOException {
+        return intColumnOutput.summariseAndClose();
     }
 
 }

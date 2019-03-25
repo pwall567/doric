@@ -25,14 +25,12 @@
 
 package net.pwall.doric;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
-import net.pwall.json.JSON;
+import net.pwall.doric.query.Query;
 import net.pwall.json.JSONArray;
 import net.pwall.json.JSONObject;
 import net.pwall.util.CSV;
@@ -42,90 +40,46 @@ import net.pwall.util.CSV;
  *
  * @author  Peter Wall
  */
-public class Table {
+public class Table implements Query {
 
     public static final int defaultMaxUniqueValues = 200;
     public static final int maxDecimalShift = 4;
     public static final int[] decimalShifts = { 1, 10, 100, 1000, 10000 };
 
+    private String name;
     private String source;
     private List<Column> columns;
     private int maxUniqueValues;
-    private int rowCount;
-
-    private BufferPool bufferPool;
-    private ColumnReader[] columnReaders;
-    private ColumnReader[] columnDataReaders;
+    private int numRows;
 
     /**
      * Construct a table.
      */
-    public Table() {
+    Table(String name) {
+        this.name = name;
         source = null;
         maxUniqueValues = defaultMaxUniqueValues;
         columns = null;
-        rowCount = 0;
-
-        bufferPool = null;
-        columnReaders = null;
-        columnDataReaders = null;
+        numRows = 0;
     }
 
-    public void open(String filename) throws IOException {
-        open(new File(filename));
+    @Override
+    public boolean isNumRowsKnown() {
+        return numRows > 0;
     }
 
-    public void open(File file) throws IOException {
-        if (!(file.exists() && file.isDirectory()))
-            throw new IOException("Not found or not a directory: " + file);
-        try {
-            JSONObject json = JSON.parseObject(new File(file, "metadata.json"));
-            source = json.getString("source");
-            rowCount = json.getInt("rows");
-            JSONArray jsonColumns = json.getArray("columns");
-            int numColumns = jsonColumns.size();
-            columns = new ArrayList<>(numColumns);
-            bufferPool = new BufferPool(16, 8192); // TODO parameterise these values
-            columnReaders = new ColumnReader[numColumns];
-            columnDataReaders = new ColumnReader[numColumns];
-            for (int i = 0; i < numColumns; i++) {
-                JSONObject jsonColumn = jsonColumns.getObject(i);
-                String columnName = jsonColumn.getString("name");
-                Column column = Column.fromJSON(this, i, columnName, jsonColumn);
-                columns.add(column);
-                String filename = column.getFilename();
-                if (filename != null)
-                    columnReaders[i] = new ColumnReader(bufferPool, new File(file, filename),
-                            column.getFileSize());
-                filename = column.getDataFilename();
-                if (filename != null)
-                    columnDataReaders[i] = new ColumnReader(bufferPool, new File(file, filename),
-                            column.getDataFileSize());
-            }
-        }
-        catch (IOException ioe) {
-            throw ioe;
-        }
-        catch (Exception e) {
-            throw new IOException("Error reading metadata", e);
-        }
+    public String getName() {
+        return name;
     }
 
-    public void close() throws IOException {
+    public void close() throws Exception {
         for (int i = 0; i < columns.size(); i++) {
-            if (columnReaders[i] != null)
-                columnReaders[i].close();;
-            if (columnDataReaders[i] != null)
-                columnDataReaders[i].close();;
+            getColumn(i).getColumnInput().close();
         }
     }
 
     public String getSource() {
         return source;
-    }
-
-    public void setSource(String source) {
-        this.source = source;
     }
 
     public int getMaxUniqueValues() {
@@ -136,60 +90,54 @@ public class Table {
         this.maxUniqueValues = maxUniqueValues;
     }
 
-    public ColumnReader getColumnReader(int columnNumber) {
-        return columnReaders[columnNumber];
-    }
-
-    public ColumnReader getColumnDataReader(int columnNumber) {
-        return columnDataReaders[columnNumber];
-    }
-
     public void analyse(CSV csv, boolean readHeader) {
-        columns = new ArrayList<>();
+        List<ColumnAnalysis> analyses = new ArrayList<>();
         if (readHeader) {
             if (!csv.hasNext())
                 throw new IllegalArgumentException("CSV Header line missing");
             CSV.Record header = csv.next();
             for (int i = 0, n = header.getWidth(); i < n; i++)
-                columns.add(new Column(this, i, header.getField(i)));
+                analyses.add(new ColumnAnalysis(header.getField(i), maxUniqueValues));
         }
         while (csv.hasNext()) {
             CSV.Record record = csv.next();
-            if (!readHeader && rowCount == 0) {
+            if (!readHeader && numRows == 0) {
                 for (int i = 0, n = record.getWidth(); i < n; i++)
-                    columns.add(new Column(this, i, "col" + i));
+                    analyses.add(new ColumnAnalysis("col" + i, maxUniqueValues));
             }
 
             int width = record.getWidth();
-            if (width != columns.size())
+            if (width != analyses.size())
                 throw new IllegalArgumentException("CSV number of fields inconsistent, row " +
-                        rowCount + "; expected " + columns.size() + ", was " + width);
+                        numRows + "; expected " + analyses.size() + ", was " + width);
 
             for (int i = 0; i < width; i++)
-                columns.get(i).analyse(record.getField(i));
+                analyses.get(i).analyse(record.getField(i));
 
-            rowCount++;
+            numRows++;
         }
-        if (rowCount > 0) {
-            for (Column column : columns)
-                column.resolve();
+        columns = new ArrayList<>();
+        for (ColumnAnalysis analysis : analyses) {
+            columns.add(analysis.resolve());
         }
     }
 
-    public int getRowCount() {
-        return rowCount;
+    @Override
+    public int getNumRows() {
+        return numRows;
     }
 
     public Row getRow(int rowNumber) {
         return new Row(this, rowNumber);
     }
 
-    public Iterable<Row> getRows() {
-        return () -> new Iterator<Row>() {
+    @Override
+    public Iterator<Row> iterator() {
+        return new Iterator<Row>() {
             private int index = 0;
             @Override
             public boolean hasNext() {
-                return index < rowCount;
+                return index < numRows;
             }
             @Override
             public Row next() {
@@ -200,7 +148,8 @@ public class Table {
         };
     }
 
-    public int getColumnCount() {
+    @Override
+    public int getNumColumns() {
         return columns.size();
     }
 
@@ -264,14 +213,30 @@ public class Table {
      */
     public JSONObject toJSON() {
         JSONObject json = new JSONObject();
+        if (name != null)
+            json.putValue("name", name);
         if (source != null)
             json.putValue("source", source);
-        json.putValue("rows", rowCount);
+        json.putValue("rows", numRows);
         JSONArray array = new JSONArray();
         for (Column column : getColumns())
             array.add(column.toJSON());
         json.put("columns", array);
         return json;
+    }
+
+    // package-local setters
+
+    void setSource(String source) {
+        this.source = source;
+    }
+
+    void setNumRows(int numRows) {
+        this.numRows = numRows;
+    }
+
+    void setColumns(List<Column> columns) {
+        this.columns = columns;
     }
 
 }

@@ -23,42 +23,24 @@
  * SOFTWARE.
  */
 
-package net.pwall.doric;
+package net.pwall.doric.query;
 
-import java.io.IOException;
+import java.util.Iterator;
 
-public class Row {
+import net.pwall.doric.Column;
+import net.pwall.doric.Row;
 
-    private Table table;
-    private int rowNumber;
+public interface Query extends Iterable<Row> {
 
-    public Row(Table table, int rowNumber) {
-        this.table = table;
-        this.rowNumber = rowNumber;
-    }
+    boolean isNumRowsKnown();
 
-    public long getLong(String columnName) throws IOException {
-        return getLong(table.getColumn(columnName));
-    }
+    int getNumRows();
 
-    public long getLong(int columnNumber) throws IOException {
-        return getLong(table.getColumn(columnNumber));
-    }
+    int getNumColumns();
 
-    public long getLong(Column column) throws IOException {
-        return column.getColumnInput().getLong(rowNumber);
-    }
+    Column getColumn(int i);
 
-    public String getString(String columnName) throws IOException {
-        return getString(table.getColumn(columnName));
-    }
-
-    public String getString(int columnNumber) throws IOException {
-        return getString(table.getColumn(columnNumber));
-    }
-
-    public String getString(Column column) throws IOException {
-        return column.getColumnInput().getString(rowNumber);
-    }
+    @Override
+    Iterator<Row> iterator();
 
 }

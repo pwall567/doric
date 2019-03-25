@@ -53,7 +53,7 @@ public class BufferPool {
         for (int i = 0, n = pool.size(); i < n; i++) {
             Entry entry = pool.get(i);
             if (entry.getFile() == file && entry.getOffset() == offset) {
-                if (pool.size() > 1) {
+                if (pool.size() > 1 && i > 0) {
                     pool.remove(i);
                     pool.add(0, entry);
                 }
@@ -68,6 +68,16 @@ public class BufferPool {
         byte[] buffer = entry.getBuffer();
         file.readFully(buffer, 0, length);
         return buffer;
+    }
+
+    public void purge(RandomAccessFile file) {
+        int i = 0;
+        while (i < pool.size()) {
+            if (pool.get(i).getFile() == file)
+                pool.remove(i);
+            else
+                i++;
+        }
     }
 
     private static class Entry {

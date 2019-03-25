@@ -1,5 +1,5 @@
 /*
- * @(#) Row.java
+ * @(#) ColumnInputConstantString.java
  *
  * doric Column-oriented database system
  * Copyright (c) 2019 Peter Wall
@@ -23,42 +23,38 @@
  * SOFTWARE.
  */
 
-package net.pwall.doric;
+package net.pwall.doric.columninput;
 
-import java.io.IOException;
+class ColumnInputConstantString implements ColumnInput {
 
-public class Row {
+    private String value;
 
-    private Table table;
-    private int rowNumber;
-
-    public Row(Table table, int rowNumber) {
-        this.table = table;
-        this.rowNumber = rowNumber;
+    public ColumnInputConstantString(String value) {
+        this.value = value;
     }
 
-    public long getLong(String columnName) throws IOException {
-        return getLong(table.getColumn(columnName));
+    @Override
+    public boolean isNull(int rowNumber) {
+        return false;
     }
 
-    public long getLong(int columnNumber) throws IOException {
-        return getLong(table.getColumn(columnNumber));
+    @Override
+    public Number getNumber(int rowNumber) {
+        throw new IllegalStateException("Column can not return <Number>");
     }
 
-    public long getLong(Column column) throws IOException {
-        return column.getColumnInput().getLong(rowNumber);
+    @Override
+    public long getLong(int rowNumber) {
+        throw new IllegalStateException("Column can not return <long>");
     }
 
-    public String getString(String columnName) throws IOException {
-        return getString(table.getColumn(columnName));
+    @Override
+    public String getString(int rowNumber) {
+        return value;
     }
 
-    public String getString(int columnNumber) throws IOException {
-        return getString(table.getColumn(columnNumber));
-    }
-
-    public String getString(Column column) throws IOException {
-        return column.getColumnInput().getString(rowNumber);
+    @Override
+    public void close() {
     }
 
 }

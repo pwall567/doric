@@ -1,5 +1,5 @@
 /*
- * @(#) Row.java
+ * @(#) ColumnInputNone.java
  *
  * doric Column-oriented database system
  * Copyright (c) 2019 Peter Wall
@@ -23,42 +23,32 @@
  * SOFTWARE.
  */
 
-package net.pwall.doric;
+package net.pwall.doric.columninput;
 
-import java.io.IOException;
+class ColumnInputNone implements ColumnInput {
 
-public class Row {
-
-    private Table table;
-    private int rowNumber;
-
-    public Row(Table table, int rowNumber) {
-        this.table = table;
-        this.rowNumber = rowNumber;
+    @Override
+    public boolean isNull(int rowNumber) {
+        return false;
     }
 
-    public long getLong(String columnName) throws IOException {
-        return getLong(table.getColumn(columnName));
+    @Override
+    public Number getNumber(int rowNumber) {
+        throw new IllegalStateException("Column can not return <Number>");
     }
 
-    public long getLong(int columnNumber) throws IOException {
-        return getLong(table.getColumn(columnNumber));
+    @Override
+    public long getLong(int rowNumber) {
+        throw new IllegalStateException("Column can not return <long>");
     }
 
-    public long getLong(Column column) throws IOException {
-        return column.getColumnInput().getLong(rowNumber);
+    @Override
+    public String getString(int rowNumber) {
+        return "";
     }
 
-    public String getString(String columnName) throws IOException {
-        return getString(table.getColumn(columnName));
-    }
-
-    public String getString(int columnNumber) throws IOException {
-        return getString(table.getColumn(columnNumber));
-    }
-
-    public String getString(Column column) throws IOException {
-        return column.getColumnInput().getString(rowNumber);
+    @Override
+    public void close() {
     }
 
 }
