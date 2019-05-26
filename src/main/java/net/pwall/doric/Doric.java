@@ -131,7 +131,7 @@ public class Doric {
 
     public static synchronized BufferPool getBufferPool() {
         if (bufferPool == null)
-            bufferPool = new BufferPool(16, 8192); // TODO find a way to parameterise these values
+            bufferPool = new BufferPool(40, 8192); // TODO find a way to parameterise these values
         return bufferPool;
     }
 

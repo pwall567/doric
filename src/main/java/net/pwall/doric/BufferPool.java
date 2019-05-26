@@ -26,7 +26,8 @@
 package net.pwall.doric;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,56 +49,79 @@ public class BufferPool {
         return bufferSize;
     }
 
-    public byte[] findBuffer(RandomAccessFile file, long offset, int length)
-            throws IOException {
+    public ByteBuffer findBuffer(FileChannel channel, long fileSize, long offset) throws IOException {
+        long bufferOffset = roundDown(offset, bufferSize);
+        long bytesRemaining = fileSize - bufferOffset;
         for (int i = 0, n = pool.size(); i < n; i++) {
             Entry entry = pool.get(i);
-            if (entry.getFile() == file && entry.getOffset() == offset) {
+            if (entry.getChannel() == channel && entry.getOffset() == bufferOffset) {
                 if (pool.size() > 1 && i > 0) {
                     pool.remove(i);
                     pool.add(0, entry);
                 }
-                return entry.getBuffer();
+                ByteBuffer buffer = entry.getBuffer();
+                buffer.position((int)(offset - bufferOffset));
+                return buffer;
             }
         }
         Entry entry = pool.size() == maxEntries ? pool.remove(maxEntries - 1) :
                 new Entry(bufferSize);
-        entry.setFile(file);
-        entry.setOffset(offset);
-        file.seek(offset);
-        byte[] buffer = entry.getBuffer();
-        file.readFully(buffer, 0, length);
+        pool.add(0, entry);
+        entry.setChannel(channel);
+        entry.setOffset(bufferOffset);
+        channel.position(bufferOffset);
+        ByteBuffer buffer = entry.getBuffer();
+        buffer.clear();
+        if (bytesRemaining < bufferSize)
+            buffer.limit((int)(bytesRemaining));
+        do {
+            channel.read(buffer);
+        } while (buffer.hasRemaining());
+        buffer.position((int)(offset - bufferOffset));
         return buffer;
     }
 
-    public void purge(RandomAccessFile file) {
+    public void purge(FileChannel channel) {
         int i = 0;
         while (i < pool.size()) {
-            if (pool.get(i).getFile() == file)
+            if (pool.get(i).getChannel() == channel)
                 pool.remove(i);
             else
                 i++;
         }
     }
 
+    /**
+     * Round down the offset to a multiple of the buffer size.  This technique relies on
+     * restricting buffer sizes to powers of 2.
+     *
+     * @param   offset      the offset
+     * @param   bufferSize  the buffer size
+     * @return  the offset rounded down.
+     */
+    private static long roundDown(long offset, int bufferSize) {
+//        return (offset / bufferSize) * bufferSize;
+        return offset & -bufferSize;
+    }
+
     private static class Entry {
 
-        private RandomAccessFile file;
+        private FileChannel channel;
         private long offset;
-        private byte[] buffer;
+        private ByteBuffer buffer;
 
         public Entry(int size) {
-            file = null;
+            channel = null;
             offset = 0;
-            buffer = new byte[size];
+            buffer = ByteBuffer.allocate(size); // TODO - optionally use allocateDirect()
         }
 
-        public RandomAccessFile getFile() {
-            return file;
+        public FileChannel getChannel() {
+            return channel;
         }
 
-        public void setFile(RandomAccessFile file) {
-            this.file = file;
+        public void setChannel(FileChannel channel) {
+            this.channel = channel;
         }
 
         public long getOffset() {
@@ -108,7 +132,7 @@ public class BufferPool {
             this.offset = offset;
         }
 
-        private byte[] getBuffer() {
+        private ByteBuffer getBuffer() {
             return buffer;
         }
 
