@@ -25,7 +25,6 @@
 
 package net.pwall.doric;
 
-
 import java.util.Map;
 
 import net.pwall.doric.columninput.ColumnInput;
@@ -48,6 +47,9 @@ public class Column {
     private double maxFloat;
     private double minFloat;
     private int maxDecimals;
+
+    private boolean ascending;
+    private boolean descending;
 
     private Map<String, Long> uniqueValues;
     private Map<Long, Long> integerUniqueValues;
@@ -76,6 +78,8 @@ public class Column {
         maxFloat = 0.0;
         minFloat = 0.0;
         maxDecimals = 0;
+        ascending = false;
+        descending = false;
 
         uniqueValues = null;
         integerUniqueValues = null;
@@ -117,6 +121,22 @@ public class Column {
 
     void setName(String name) {
         this.name = name;
+    }
+
+    public boolean isAscending() {
+        return ascending;
+    }
+
+    public void setAscending(boolean ascending) {
+        this.ascending = ascending;
+    }
+
+    public boolean isDescending() {
+        return descending;
+    }
+
+    public void setDescending(boolean descending) {
+        this.descending = descending;
     }
 
     public boolean isNullable() {
@@ -302,6 +322,10 @@ public class Column {
             }
             else
                 json.putValue("type", "undetermined");
+            if (ascending)
+                json.putValue("ascending", true);
+            if (descending)
+                json.putValue("descending", true);
             if (nullable)
                 json.putValue("nullable", true);
             int numUnique = getNumUniqueValues();
@@ -361,6 +385,10 @@ public class Column {
                 column.minInt = json.getLong("minInt");
                 column.maxInt = json.getLong("maxInt");
             }
+            if (json.containsKey("ascending"))
+                column.ascending = json.getBoolean("ascending");
+            if (json.containsKey("descending"))
+                column.descending = json.getBoolean("descending");
             if (json.containsKey("nullable"))
                 column.nullable = json.getBoolean("nullable");
             // TODO - if "uniqueValues" is in JSON, how do we make use of it?

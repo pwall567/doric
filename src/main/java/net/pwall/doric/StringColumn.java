@@ -1,5 +1,5 @@
 /*
- * @(#) Row.java
+ * @(#) StringColumn.java
  *
  * doric Column-oriented database system
  * Copyright (c) 2019 Peter Wall
@@ -25,42 +25,17 @@
 
 package net.pwall.doric;
 
-import java.io.IOException;
+public class StringColumn extends Column {
 
-import net.pwall.doric.query.Query;
-
-public class Row {
-
-    private Query query;
-    private int rowNumber;
-
-    public Row(Query query, int rowNumber) {
-        this.query = query;
-        this.rowNumber = rowNumber;
+    public StringColumn(String name) {
+        super(name);
     }
 
-    public long getLong(String columnName) throws IOException {
-        return getLong(query.getColumn(columnName));
+    @Override
+    public Type getType() {
+        return Type.undetermined; // TODO consider creating 'string' type
     }
 
-    public long getLong(int columnNumber) throws IOException {
-        return getLong(query.getColumn(columnNumber));
-    }
-
-    public long getLong(Column column) throws IOException {
-        return column.getColumnInput().getLong(rowNumber);
-    }
-
-    public String getString(String columnName) throws IOException {
-        return getString(query.getColumn(columnName));
-    }
-
-    public String getString(int columnNumber) throws IOException {
-        return getString(query.getColumn(columnNumber));
-    }
-
-    public String getString(Column column) throws IOException {
-        return column.getColumnInput().getString(rowNumber);
-    }
+    // TODO to be completed...
 
 }

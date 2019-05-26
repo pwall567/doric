@@ -129,42 +129,6 @@ public class Doric {
         return result;
     }
 
-    public static Table open(String filename) throws IOException {
-        return open(new File(filename));
-    }
-
-    public static Table open(File file) throws IOException {
-        if (!(file.exists() && file.isDirectory()))
-            throw new IOException("Not found or not a directory: " + file);
-        try {
-            JSONObject json = JSON.parseObject(new File(file, "metadata.json"));
-            String name = json.getString("name");
-            if (name == null)
-                name = "table";
-            Table table = new Table(name);
-            if (json.containsKey("source"))
-                table.setSource(json.getString("source"));
-            if (json.containsKey("rows"))
-                table.setNumRows(json.getInt("rows"));
-            JSONArray jsonColumns = json.getArray("columns");
-            int numColumns = jsonColumns.size();
-            List<Column> columns = new ArrayList<>(numColumns);
-            for (int i = 0; i < numColumns; i++) {
-                Column column = Column.fromJSON(jsonColumns.getObject(i));
-                columns.add(column);
-                column.setColumnInput(ColumnInput.getExtendedColumnInputObject(file, column));
-            }
-            table.setColumns(columns);
-            return table;
-        }
-        catch (IOException ioe) {
-            throw ioe;
-        }
-        catch (Exception e) {
-            throw new IOException("Error reading metadata", e);
-        }
-    }
-
     public static synchronized BufferPool getBufferPool() {
         if (bufferPool == null)
             bufferPool = new BufferPool(16, 8192); // TODO find a way to parameterise these values

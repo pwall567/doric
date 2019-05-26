@@ -25,12 +25,16 @@
 
 package net.pwall.doric;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+import net.pwall.doric.columninput.ColumnInput;
 import net.pwall.doric.query.Query;
+import net.pwall.json.JSON;
 import net.pwall.json.JSONArray;
 import net.pwall.json.JSONObject;
 import net.pwall.util.CSV;
@@ -127,59 +131,14 @@ public class Table implements Query {
         return numRows;
     }
 
-    public Row getRow(int rowNumber) {
-        return new Row(this, rowNumber);
-    }
-
-    @Override
-    public Iterator<Row> iterator() {
-        return new Iterator<Row>() {
-            private int index = 0;
-            @Override
-            public boolean hasNext() {
-                return index < numRows;
-            }
-            @Override
-            public Row next() {
-                if (!hasNext())
-                    throw new NoSuchElementException();
-                return getRow(index++);
-            }
-        };
-    }
-
     @Override
     public int getNumColumns() {
         return columns.size();
     }
 
+    @Override
     public Column getColumn(int columnNumber) {
         return columns.get(columnNumber);
-    }
-
-    public Column getColumn(String columnName) {
-        for (int i = 0, n = columns.size(); i < n; i++) {
-            Column column = columns.get(i);
-            if (column.getName().equals(columnName))
-                return column;
-        }
-        throw new IllegalArgumentException("Can't locate column: " + columnName);
-    }
-
-    public Iterable<Column> getColumns() {
-        return () -> new Iterator<Column>() {
-            private int index = 0;
-            @Override
-            public boolean hasNext() {
-                return index < columns.size();
-            }
-            @Override
-            public Column next() {
-                if (!hasNext())
-                    throw new NoSuchElementException();
-                return columns.get(index++);
-            }
-        };
     }
 
     public void setColumnName(int index, String name) {
@@ -225,18 +184,52 @@ public class Table implements Query {
         return json;
     }
 
-    // package-local setters
-
     void setSource(String source) {
         this.source = source;
     }
 
-    void setNumRows(int numRows) {
+    private void setNumRows(int numRows) {
         this.numRows = numRows;
     }
 
-    void setColumns(List<Column> columns) {
+    private void setColumns(List<Column> columns) {
         this.columns = columns;
+    }
+
+    public static Table open(String filename) throws IOException {
+        return open(new File(filename));
+    }
+
+    public static Table open(File file) throws IOException {
+        if (!(file.exists() && file.isDirectory()))
+            throw new IOException("Not found or not a directory: " + file);
+        try {
+            JSONObject json = JSON.parseObject(new File(file, "metadata.json"));
+            String name = json.getString("name");
+            if (name == null)
+                name = "table";
+            Table table = new Table(name);
+            if (json.containsKey("source"))
+                table.setSource(json.getString("source"));
+            if (json.containsKey("rows"))
+                table.setNumRows(json.getInt("rows"));
+            JSONArray jsonColumns = json.getArray("columns");
+            int numColumns = jsonColumns.size();
+            List<Column> columns = new ArrayList<>(numColumns);
+            for (int i = 0; i < numColumns; i++) {
+                Column column = Column.fromJSON(jsonColumns.getObject(i));
+                columns.add(column);
+                column.setColumnInput(ColumnInput.getExtendedColumnInputObject(file, column));
+            }
+            table.setColumns(columns);
+            return table;
+        }
+        catch (IOException ioe) {
+            throw ioe;
+        }
+        catch (Exception e) {
+            throw new IOException("Error reading metadata", e);
+        }
     }
 
 }

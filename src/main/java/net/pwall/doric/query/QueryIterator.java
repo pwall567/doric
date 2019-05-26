@@ -1,5 +1,5 @@
 /*
- * @(#) Query.java
+ * @(#) QueryIterator.java
  *
  * doric Column-oriented database system
  * Copyright (c) 2019 Peter Wall
@@ -27,58 +27,29 @@ package net.pwall.doric.query;
 
 import java.util.Iterator;
 import java.util.NoSuchElementException;
-import java.util.Spliterator;
 
-import net.pwall.doric.Column;
 import net.pwall.doric.Row;
 
-public interface Query extends Iterable<Row> {
+public class QueryIterator implements Iterator<Row> {
 
-    boolean isNumRowsKnown();
+    private Query query;
+    private int rowIndex;
 
-    int getNumRows();
-
-    int getNumColumns();
-
-    Column getColumn(int i);
-
-    default Column getColumn(String columnName) {
-        for (int i = 0, n = getNumColumns(); i < n; i++) {
-            Column column = getColumn(i);
-            if (column.getName().equals(columnName))
-                return column;
-        }
-        throw new IllegalArgumentException("Can't locate column: " + columnName);
-    }
-
-    default Row getRow(int rowNumber) {
-        return new Row(this, rowNumber);
-    }
-
-    default Iterable<Column> getColumns() {
-        return () -> new Iterator<Column>() {
-            private int index = 0;
-            @Override
-            public boolean hasNext() {
-                return index < getNumColumns();
-            }
-            @Override
-            public Column next() {
-                if (!hasNext())
-                    throw new NoSuchElementException();
-                return getColumn(index++);
-            }
-        };
+    public QueryIterator(Query query) {
+        this.query = query;
+        rowIndex = 0;
     }
 
     @Override
-    default Iterator<Row> iterator() {
-        return new QueryIterator(this);
+    public boolean hasNext() {
+        return rowIndex < query.getNumRows(); // TODO what to do if number of rows not known?
     }
 
     @Override
-    default Spliterator<Row> spliterator() {
-        return new QuerySpliterator(this, 0, getNumRows());
+    public Row next() {
+        if (!hasNext())
+            throw new NoSuchElementException();
+        return query.getRow(rowIndex++);
     }
 
 }

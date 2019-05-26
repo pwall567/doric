@@ -59,6 +59,11 @@ public class ColumnAnalysis {
     // Implementation note - once the maximum is reached, this variable is set to null.
     // That can be used to determine that the column has more than the maximum
 
+    private String previousString;
+
+    private boolean stringAscending;
+    private boolean stringDescending;
+
     public ColumnAnalysis(String name, int maxUniqueValues) {
 
         this.name = name;
@@ -80,6 +85,10 @@ public class ColumnAnalysis {
         this.maxUniqueValues = maxUniqueValues;
         uniqueValues = new SortedListMap<>(maxUniqueValues);
 
+        previousString = "";
+
+        stringAscending = true;
+        stringDescending = true;
     }
 
     public ColumnAnalysis(String name) {
@@ -115,6 +124,7 @@ public class ColumnAnalysis {
             }
             catch (NumberFormatException nfe) {
                 couldBeFloat = false;
+                couldBeInt = false;
             }
         }
 
@@ -140,6 +150,12 @@ public class ColumnAnalysis {
             }
         }
 
+        if (stringAscending && value.compareTo(previousString) < 0)
+            stringAscending = false;
+        if (stringDescending && value.compareTo(previousString) > 0)
+            stringDescending = false;
+        previousString = value;
+
         if (uniqueValues != null && !uniqueValues.containsKey(value)) {
             if (uniqueValues.size() < maxUniqueValues)
                 uniqueValues.put(value, -1L);
@@ -160,6 +176,10 @@ public class ColumnAnalysis {
         }
         else if (couldBeInt) {
             column.setType(Column.Type.integer);
+            if (intMinMax.isAscending())
+                column.setAscending(true);
+            if (intMinMax.isDescending())
+                column.setDescending(true);
             column.setStorageType(getIntStorageType(intMinMax.getMinimum(), intMinMax.getMaximum(), nullable));
             // TODO - do we need minimum and maximum values?
             column.setMinInt(intMinMax.getMinimum());
@@ -167,6 +187,10 @@ public class ColumnAnalysis {
         }
         else if (couldBeFloat) {
             column.setType(Column.Type.floating);
+            if (floatMinMax.isAscending())
+                column.setAscending(true);
+            if (floatMinMax.isDescending())
+                column.setDescending(true);
             int maxDecimals = decimalMax.getMaximum();
             if (maxDecimals <= Table.maxDecimalShift) {
                 long minShifted = Math.round(floatMinMax.getMinimum() * Table.decimalShifts[maxDecimals]);
@@ -184,6 +208,10 @@ public class ColumnAnalysis {
         }
         else if (couldBeDate) {
             column.setType(Column.Type.date);
+            if (intMinMax.isAscending())
+                column.setAscending(true);
+            if (intMinMax.isDescending())
+                column.setDescending(true);
             column.setStorageType(getIntStorageType(intMinMax.getMinimum(), intMinMax.getMaximum(), nullable));
             // TODO - do we need minimum and maximum values?
             column.setMinInt(intMinMax.getMinimum());
@@ -191,6 +219,10 @@ public class ColumnAnalysis {
         }
         else {
             column.setType(Column.Type.undetermined);
+            if (stringAscending && !stringDescending)
+                column.setAscending(true);
+            if (stringDescending && !stringAscending)
+                column.setDescending(true);
             column.setStorageType(Column.StorageType.bytes);
             int numOccurrences = uniqueValues == null ? itemCount : uniqueValues.size();
             int maxWidth = widthMinMax.getMaximum();
@@ -213,6 +245,10 @@ public class ColumnAnalysis {
         }
         else if (couldBeInt) {
             result.putValue("type", "integer");
+            if (intMinMax.isAscending())
+                result.putValue("ascending", true);
+            if (intMinMax.isDescending())
+                result.putValue("descending", true);
             result.putValue("storageType",
                     getIntStorageType(intMinMax.getMinimum(), intMinMax.getMaximum(), nullable).toString());
             result.putValue("minInt", intMinMax.getMinimum());
@@ -220,6 +256,10 @@ public class ColumnAnalysis {
         }
         else if (couldBeFloat) {
             result.putValue("type", "floating");
+            if (floatMinMax.isAscending())
+                result.putValue("ascending", true);
+            if (floatMinMax.isDescending())
+                result.putValue("descending", true);
             int maxDecimals = decimalMax.getMaximum();
             result.putValue("maxDecimals", maxDecimals);
             if (maxDecimals <= Table.maxDecimalShift) {
@@ -236,6 +276,10 @@ public class ColumnAnalysis {
         }
         else if (couldBeDate) {
             result.putValue("type", "date");
+            if (intMinMax.isAscending())
+                result.putValue("ascending", true);
+            if (intMinMax.isDescending())
+                result.putValue("descending", true);
             result.putValue("storageType",
                     getIntStorageType(intMinMax.getMinimum(), intMinMax.getMaximum(), nullable).toString());
             result.putValue("minInt", intMinMax.getMinimum());
@@ -243,6 +287,10 @@ public class ColumnAnalysis {
         }
         else {
             result.putValue("type", "undetermined");
+            if (stringAscending && !stringDescending)
+                result.putValue("ascending", true);
+            if (stringDescending && !stringAscending)
+                result.putValue("descending", true);
             result.putValue("storageType", "bytes");
             int numOccurrences = uniqueValues == null ? itemCount : uniqueValues.size();
             int maxWidth = widthMinMax.getMaximum();
@@ -380,10 +428,14 @@ public class ColumnAnalysis {
 
         private T minimum;
         private T maximum;
+        private boolean ascending;
+        private boolean descending;
 
         public MinMax() {
             minimum = null;
             maximum = null;
+            ascending = true;
+            descending = true;
         }
 
         @Override
@@ -393,6 +445,10 @@ public class ColumnAnalysis {
                 maximum = t;
             }
             else {
+                if (ascending && t.compareTo(maximum) < 0)
+                    ascending = false;
+                if (descending && t.compareTo(minimum) > 0)
+                    descending = false;
                 if (t.compareTo(minimum) < 0)
                     minimum = t;
                 if (t.compareTo(maximum) > 0)
@@ -410,6 +466,14 @@ public class ColumnAnalysis {
 
         public T getMaximum() {
             return maximum;
+        }
+
+        public boolean isAscending() {
+            return ascending && !descending;
+        }
+
+        public boolean isDescending() {
+            return descending && !ascending;
         }
 
     }

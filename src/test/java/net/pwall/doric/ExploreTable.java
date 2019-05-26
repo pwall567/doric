@@ -12,7 +12,7 @@ public class ExploreTable {
 
     public static void main(String[] args) {
         try {
-            Table table = Doric.open("./target/super");
+            Table table = Table.open("./target/super");
             for (int i = 0; i < 9; i++)
                 System.out.println(getRow(table, i));
             System.out.println();
@@ -20,7 +20,7 @@ public class ExploreTable {
             System.out.println("... and the last 10");
             System.out.println();
             System.out.println();
-            for (int i = table.getRowCount() - 19; i < table.getRowCount(); i++)
+            for (int i = table.getNumRows() - 19; i < table.getNumRows(); i++)
                 System.out.println(getRow(table, i));
         } catch (IOException e) {
             e.printStackTrace();
