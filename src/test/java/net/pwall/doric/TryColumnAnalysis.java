@@ -15,7 +15,7 @@ public class TryColumnAnalysis {
 
     public static void main(String[] args) {
         try {
-            File csvFile = new File("/home/pwall/HyperAnna/Supermarket_3674.csv");
+            File csvFile = new File(args[0]);
             CSV csv = new CSV(new FileInputStream(csvFile));
             if (!csv.hasNext())
                 throw new IllegalArgumentException("CSV Header line missing");
