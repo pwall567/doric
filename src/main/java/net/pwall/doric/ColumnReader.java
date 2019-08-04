@@ -40,6 +40,8 @@ public class ColumnReader {
     private RandomAccessFile raf;
     private FileChannel channel;
     private long fileSize;
+    private byte[] byteArray;
+    private ByteBuffer arrayByteBuffer;
 
     public ColumnReader(BufferPool bufferPool, String filename, long fileSize) throws FileNotFoundException {
         this(bufferPool, new File(filename), fileSize);
@@ -50,6 +52,8 @@ public class ColumnReader {
         raf = new RandomAccessFile(file, "r");
         channel = raf.getChannel();
         this.fileSize = fileSize;
+        byteArray = new byte[8];
+        arrayByteBuffer = ByteBuffer.wrap(byteArray);
     }
 
     public int readInt8(long offset) throws IOException {
@@ -61,43 +65,41 @@ public class ColumnReader {
         ByteBuffer buffer = findBuffer(offset);
         if (buffer.remaining() >= 2)
             return buffer.getShort();
-        int result = buffer.get();
-        buffer = findBuffer(offset + 1);
-        return result << 8 | (buffer.get() & 0xFF);
+        return fillArray(buffer, 2, offset).getShort();
     }
 
     public int readInt32(long offset) throws IOException {
         ByteBuffer buffer = findBuffer(offset);
         if (buffer.remaining() >= 4)
             return buffer.getInt();
-        int result = buffer.get();
-        if (!buffer.hasRemaining())
-            buffer = findBuffer(offset + 1);
-        result = result << 8 | (buffer.get() & 0xFF);
-        if (!buffer.hasRemaining())
-            buffer = findBuffer(offset + 2);
-        result = result << 8 | (buffer.get() & 0xFF);
-        if (!buffer.hasRemaining())
-            buffer = findBuffer(offset + 3);
-        return result << 8 | (buffer.get() & 0xFF);
+        return fillArray(buffer, 4, offset).getInt();
     }
 
     public long readInt64(long offset) throws IOException {
-        return (long)readInt32(offset) << 32 | ((long)readInt32(offset + 4) & 0xFFFFFFFFL);
+        ByteBuffer buffer = findBuffer(offset);
+        if (buffer.remaining() > 8)
+            return buffer.getLong();
+        return fillArray(buffer, 8, offset).getLong();
     }
 
     public double readFloat32(long offset) throws IOException {
-        return Float.intBitsToFloat(readInt32(offset));
+        ByteBuffer buffer = findBuffer(offset);
+        if (buffer.remaining() > 4)
+            return buffer.getFloat();
+        return fillArray(buffer, 4, offset).getFloat();
     }
 
     public double readFloat64(long offset) throws IOException {
-        return Double.longBitsToDouble(readInt64(offset));
+        ByteBuffer buffer = findBuffer(offset);
+        if (buffer.remaining() > 8)
+            return buffer.getDouble();
+        return fillArray(buffer, 8, offset).getDouble();
     }
 
     public String readBytes(long offset, int len) throws IOException {
         byte[] array = new byte[len];
         int arrayOffset = 0;
-        int bytesLeft = len - arrayOffset;
+        int bytesLeft = len;
         while (bytesLeft > 0) {
             ByteBuffer buffer = findBuffer(offset + arrayOffset);
             int remaining = buffer.remaining();
@@ -110,6 +112,15 @@ public class ColumnReader {
             bytesLeft -= remaining;
         }
         return Strings.fromUTF8(array);
+    }
+
+    private ByteBuffer fillArray(ByteBuffer buffer, int len, long offset) throws IOException {
+        int remaining = buffer.remaining();
+        buffer.get(byteArray, 0, remaining);
+        buffer = findBuffer(offset + remaining);
+        buffer.get(byteArray, remaining, len - remaining);
+        arrayByteBuffer.clear();
+        return arrayByteBuffer;
     }
 
     private ByteBuffer findBuffer(long offset) throws IOException {

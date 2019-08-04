@@ -35,13 +35,15 @@ public class BufferPool {
 
     private int maxEntries;
     private int bufferSize;
+    private boolean direct;
     private List<Entry> pool;
 
-    public BufferPool(int maxEntries, int bufferSize) {
-        if (((bufferSize - 1) & bufferSize) != 0)
-            throw new IllegalArgumentException("Buffer size must be power of 2");
+    public BufferPool(int maxEntries, int bufferSize, boolean direct) {
+        if (((bufferSize - 1) & bufferSize) != 0 || bufferSize < 8)
+            throw new IllegalArgumentException("Buffer size must be power of 2 and >= 8");
         this.maxEntries = maxEntries;
         this.bufferSize = bufferSize;
+        this.direct = direct;
         pool = new ArrayList<>(maxEntries);
     }
 
@@ -55,17 +57,15 @@ public class BufferPool {
         for (int i = 0, n = pool.size(); i < n; i++) {
             Entry entry = pool.get(i);
             if (entry.getChannel() == channel && entry.getOffset() == bufferOffset) {
-                if (pool.size() > 1 && i > 0) {
+                if (i > 0) {
                     pool.remove(i);
                     pool.add(0, entry);
                 }
                 ByteBuffer buffer = entry.getBuffer();
-                buffer.position((int)(offset - bufferOffset));
-                return buffer;
+                return positionBuffer(buffer, offset, bufferOffset);
             }
         }
-        Entry entry = pool.size() == maxEntries ? pool.remove(maxEntries - 1) :
-                new Entry(bufferSize);
+        Entry entry = pool.size() == maxEntries ? pool.remove(maxEntries - 1) : new Entry(bufferSize, direct);
         pool.add(0, entry);
         entry.setChannel(channel);
         entry.setOffset(bufferOffset);
@@ -77,6 +77,10 @@ public class BufferPool {
         do {
             channel.read(buffer);
         } while (buffer.hasRemaining());
+        return positionBuffer(buffer, offset, bufferOffset);
+    }
+
+    private ByteBuffer positionBuffer(ByteBuffer buffer, long offset, long bufferOffset) {
         buffer.position((int)(offset - bufferOffset));
         return buffer;
     }
@@ -110,10 +114,10 @@ public class BufferPool {
         private long offset;
         private ByteBuffer buffer;
 
-        public Entry(int size) {
+        public Entry(int size, boolean direct) {
             channel = null;
             offset = 0;
-            buffer = ByteBuffer.allocate(size); // TODO - optionally use allocateDirect()
+            buffer = direct ? ByteBuffer.allocateDirect(size) : ByteBuffer.allocate(size);
         }
 
         public FileChannel getChannel() {
